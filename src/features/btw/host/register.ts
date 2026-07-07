@@ -2,7 +2,6 @@ import {
   buildSessionContext,
   createAgentSession,
   createExtensionRuntime,
-  codingTools,
   SessionManager,
   type AgentSession,
   type AgentSessionEvent,
@@ -10,9 +9,9 @@ import {
   type ExtensionCommandContext,
   type ExtensionContext,
   type ResourceLoader,
-} from "@mariozechner/pi-coding-agent";
-import { type AssistantMessage, type Message, type ThinkingLevel as AiThinkingLevel, type UserMessage } from "@mariozechner/pi-ai";
-import { Box, Key, Text } from "@mariozechner/pi-tui";
+} from "@earendil-works/pi-coding-agent";
+import { type AssistantMessage, type Message, type ThinkingLevel as AiThinkingLevel, type UserMessage } from "@earendil-works/pi-ai";
+import { Box, Key, Text } from "@earendil-works/pi-tui";
 import { type GlimpseWindow } from "glimpseui";
 import { buildInlineWebAppHtml, escapeForInlineScript } from "../../../shared/host/html.js";
 import { openNativeWindow } from "../../../shared/host/native-window-session.js";
@@ -146,7 +145,6 @@ function stripDynamicSystemPromptFooter(systemPrompt: string): string {
     .replace(/\nCurrent working directory:[^\n]*$/u, "")
     .trim();
 }
-
 function createBtwResourceLoader(
   ctx: ExtensionCommandContext,
   appendSystemPrompt: string[] = [BTW_SYSTEM_PROMPT],
@@ -162,7 +160,6 @@ function createBtwResourceLoader(
     getAgentsFiles: () => ({ agentsFiles: [] }),
     getSystemPrompt: () => systemPrompt,
     getAppendSystemPrompt: () => appendSystemPrompt,
-    getPathMetadata: () => new Map(),
     extendResources: () => {},
     reload: async () => {},
   };
@@ -250,12 +247,12 @@ async function resolveModelApiKey(
     >;
   };
 
-  if (typeof registry.getApiKeyAndHeaders === "function") {
-    const auth = await registry.getApiKeyAndHeaders(model);
-    return auth.ok ? auth.apiKey : undefined;
+  if (typeof registry.getApiKeyAndHeaders !== "function") {
+    return undefined;
   }
 
-  return ctx.modelRegistry.getApiKey(model);
+  const auth = await registry.getApiKeyAndHeaders(model);
+  return auth.ok ? auth.apiKey : undefined;
 }
 
 function buildBtwSeedState(
@@ -1303,7 +1300,7 @@ export default function registerBtwWorkspace(pi: ExtensionAPI): void {
       model: settings.model,
       modelRegistry: ctx.modelRegistry as AgentSession["modelRegistry"],
       thinkingLevel: settings.thinkingLevel,
-      tools: codingTools,
+      tools: ["read", "bash", "edit", "write"],
       resourceLoader: createBtwResourceLoader(ctx),
     });
 

@@ -1,4 +1,4 @@
-import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { open, type GlimpseWindow } from "glimpseui";
 import { escapeForInlineScript } from "./html.js";
 import { showNativeWindowWaitingUI } from "./waiting-ui.js";
