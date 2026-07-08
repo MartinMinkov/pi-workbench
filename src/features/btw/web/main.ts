@@ -1,3 +1,5 @@
+import { escapeHtml, renderMarkdown } from "../../../shared/web/markdown.js";
+
 type BtwThreadMode = "contextual" | "tangent";
 type SessionThinkingLevel = string;
 type SessionModel = { provider: string; id: string; api: string };
@@ -67,14 +69,6 @@ function send(message: BtwWindowMessage): void {
   window.glimpse?.send(message);
 }
 
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
 
 function textPreview(value: string, max = 500): string {
   return value.length > max ? `${value.slice(0, max - 1)}…` : value;
@@ -88,7 +82,7 @@ function entryHtml(entry: BtwTranscriptEntry): string {
       return `
         <div class="mb-4">
           <div class="mb-1 text-[11px] font-extrabold uppercase text-review-accent">You</div>
-          <div class="whitespace-pre-wrap rounded-xl border border-review-border bg-review-panel-2 p-3 text-sm leading-6">${escapeHtml(entry.text)}</div>
+          <div class="markdown-body markdown-body-compact rounded-xl border border-review-border bg-review-panel-2 p-3 text-sm leading-6">${renderMarkdown(entry.text).html}</div>
         </div>`;
     case "thinking":
       return `
@@ -100,7 +94,7 @@ function entryHtml(entry: BtwTranscriptEntry): string {
       return `
         <div class="mb-4">
           <div class="mb-1 text-[11px] font-extrabold uppercase text-green-400">Assistant ${entry.streaming ? "▍" : ""}</div>
-          <div class="whitespace-pre-wrap rounded-xl border border-review-border bg-[#0f141b] p-3 text-sm leading-6">${escapeHtml(entry.text)}</div>
+          <div class="markdown-body markdown-body-compact rounded-xl border border-review-border bg-[#0f141b] p-3 text-sm leading-6">${renderMarkdown(entry.text).html}</div>
         </div>`;
     case "tool-call":
       return `

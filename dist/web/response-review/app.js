@@ -36,6 +36,218 @@
   function getReviewCommentKindLabel(definitions, kind, fallback) {
     return (definitions.find((definition) => definition.value === (kind ?? fallback)) ?? definitions.find((definition) => definition.value === fallback) ?? definitions[0]).label;
   }
+  // src/shared/web/markdown.ts
+  function escapeHtml(value) {
+    return String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+  function renderMarkdown(markdown, options = {}) {
+    const outline = [];
+    const lines = markdown.replace(/\r\n?/g, `
+`).split(`
+`);
+    const html = [];
+    let index = 0;
+    let outlineIndex = 0;
+    const idPrefix = options.outlineIdPrefix ?? "outline";
+    const needsBlockIds = options.includeOutline || options.codeCommentButtons;
+    const nextOutlineId = () => `${idPrefix}-${outlineIndex++}`;
+    while (index < lines.length) {
+      const line = lines[index] ?? "";
+      if (line.trim() === "") {
+        index += 1;
+        continue;
+      }
+      const fence = line.match(/^\s*(`{3,}|~{3,})\s*([^`]*)$/);
+      if (fence) {
+        const marker = fence[1] ?? "```";
+        const language = (fence[2] ?? "").trim();
+        const codeLines = [];
+        index += 1;
+        while (index < lines.length) {
+          const candidate = lines[index] ?? "";
+          if (new RegExp(`^\\s*${escapeRegExp(marker[0] ?? "`")}{${marker.length},}\\s*$`).test(candidate)) {
+            index += 1;
+            break;
+          }
+          codeLines.push(candidate);
+          index += 1;
+        }
+        const id = needsBlockIds ? nextOutlineId() : "";
+        if (options.includeOutline) {
+          outline.push({ id, label: language ? `Code · ${language}` : "Code block", kind: "code", language });
+        }
+        const languageLabel = language ? `<span class="code-language">${escapeHtml(language)}</span>` : "";
+        const commentButton = options.codeCommentButtons ? `<button class="code-comment-button" data-code-comment="${id}">Comment block</button>` : "";
+        const preId = id ? ` id="${id}"` : "";
+        html.push(`<pre${preId}>${languageLabel}${commentButton}<code>${escapeHtml(codeLines.join(`
+`))}</code></pre>`);
+        continue;
+      }
+      const heading = line.match(/^(#{1,6})\s+(.+?)\s*#*\s*$/);
+      if (heading) {
+        const level = heading[1]?.length ?? 2;
+        const label = heading[2]?.trim() ?? "Heading";
+        const id = options.includeOutline ? nextOutlineId() : "";
+        if (options.includeOutline) {
+          outline.push({ id, label: stripInlineMarkdown(label), kind: "heading", level });
+        }
+        const headingId = id ? ` id="${id}"` : "";
+        html.push(`<h${level}${headingId}>${renderInlineMarkdown(label)}</h${level}>`);
+        index += 1;
+        continue;
+      }
+      if (/^\s{0,3}([-*_])(?:\s*\1){2,}\s*$/.test(line)) {
+        html.push("<hr />");
+        index += 1;
+        continue;
+      }
+      const table = readTable(lines, index);
+      if (table) {
+        html.push(renderTable(table.headers, table.rows));
+        index = table.nextIndex;
+        continue;
+      }
+      if (isListLine(line)) {
+        const block = [];
+        while (index < lines.length && isListLine(lines[index] ?? "")) {
+          block.push(lines[index] ?? "");
+          index += 1;
+        }
+        html.push(renderListBlock(block));
+        continue;
+      }
+      if (/^>\s?/.test(line)) {
+        const quoteLines = [];
+        while (index < lines.length && /^>\s?/.test(lines[index] ?? "")) {
+          quoteLines.push((lines[index] ?? "").replace(/^>\s?/, ""));
+          index += 1;
+        }
+        html.push(`<blockquote>${renderMarkdown(quoteLines.join(`
+`)).html}</blockquote>`);
+        continue;
+      }
+      const paragraph = [];
+      while (index < lines.length && !startsBlock(lines, index)) {
+        paragraph.push(lines[index] ?? "");
+        index += 1;
+      }
+      html.push(`<p>${renderInlineMarkdown(paragraph.join(`
+`))}</p>`);
+    }
+    return { html: html.join(`
+`), outline };
+  }
+  function renderInlineMarkdown(value) {
+    const codeSpans = [];
+    const withoutCode = value.replace(/`([^`]+)`/g, (_match, code) => {
+      const token = `\x00CODE${codeSpans.length}\x00`;
+      codeSpans.push(`<code>${escapeHtml(code)}</code>`);
+      return token;
+    });
+    let html = escapeHtml(withoutCode).replace(/\[([^\]\n]+)\]\((https?:\/\/[^\s)<>"']+)\)/g, (_match, label, href) => `<a href="${escapeHtml(href)}" target="_blank" rel="noreferrer">${label}</a>`).replace(/(\*\*|__)(.+?)\1/g, "<strong>$2</strong>").replace(/(\*|_)([^*_]+?)\1/g, "<em>$2</em>").replace(/~~(.+?)~~/g, "<del>$1</del>").replace(/\n/g, "<br />");
+    codeSpans.forEach((code, codeIndex) => {
+      html = html.replace(`\x00CODE${codeIndex}\x00`, code);
+    });
+    return html;
+  }
+  function startsBlock(lines, index) {
+    const line = lines[index] ?? "";
+    if (line.trim() === "")
+      return true;
+    if (/^\s*(`{3,}|~{3,})/.test(line))
+      return true;
+    if (/^(#{1,6})\s+/.test(line))
+      return true;
+    if (/^\s{0,3}([-*_])(?:\s*\1){2,}\s*$/.test(line))
+      return true;
+    if (/^>\s?/.test(line))
+      return true;
+    if (isListLine(line))
+      return true;
+    return Boolean(readTable(lines, index));
+  }
+  function isListLine(line) {
+    return /^\s{0,12}(?:[-*+]\s+|\d+[.)]\s+)/.test(line);
+  }
+  function parseListLine(line) {
+    const match = line.match(/^(\s{0,12})([-*+]|\d+[.)])\s+(.+)$/);
+    if (!match)
+      return null;
+    return {
+      indent: match[1]?.replace(/\t/g, "    ").length ?? 0,
+      ordered: /^\d/.test(match[2] ?? ""),
+      text: match[3] ?? ""
+    };
+  }
+  function renderListBlock(lines) {
+    const parsed = lines.map(parseListLine).filter((line) => line !== null);
+    const [html] = renderListAt(parsed, 0, parsed[0]?.indent ?? 0, parsed[0]?.ordered ?? false);
+    return html;
+  }
+  function renderListAt(lines, start, indent, ordered) {
+    const tag = ordered ? "ol" : "ul";
+    const items = [];
+    let index = start;
+    while (index < lines.length) {
+      const item = lines[index];
+      if (!item || item.indent < indent)
+        break;
+      if (item.indent > indent)
+        break;
+      if (item.ordered !== ordered)
+        break;
+      index += 1;
+      let body = renderTaskListItem(item.text);
+      while (index < lines.length && (lines[index]?.indent ?? 0) > indent) {
+        const nested = lines[index];
+        if (!nested)
+          break;
+        const [nestedHtml, nextIndex] = renderListAt(lines, index, nested.indent, nested.ordered);
+        body += nestedHtml;
+        index = nextIndex;
+      }
+      items.push(`<li>${body}</li>`);
+    }
+    return [`<${tag}>${items.join("")}</${tag}>`, index];
+  }
+  function renderTaskListItem(text) {
+    const task = text.match(/^\[([ xX])]\s+(.+)$/);
+    if (!task)
+      return renderInlineMarkdown(text);
+    const checked = task[1]?.toLowerCase() === "x";
+    const label = renderInlineMarkdown(task[2] ?? "");
+    return `<input type="checkbox" disabled${checked ? " checked" : ""} /> ${label}`;
+  }
+  function readTable(lines, start) {
+    const header = lines[start] ?? "";
+    const delimiter = lines[start + 1] ?? "";
+    if (!header.includes("|") || !/^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$/.test(delimiter)) {
+      return null;
+    }
+    const headers = splitTableRow(header);
+    const rows = [];
+    let index = start + 2;
+    while (index < lines.length && (lines[index] ?? "").includes("|")) {
+      rows.push(splitTableRow(lines[index] ?? ""));
+      index += 1;
+    }
+    return { headers, rows, nextIndex: index };
+  }
+  function splitTableRow(line) {
+    return line.trim().replace(/^\|/, "").replace(/\|$/, "").split("|").map((cell) => cell.trim());
+  }
+  function renderTable(headers, rows) {
+    const headerHtml = headers.map((header) => `<th>${renderInlineMarkdown(header)}</th>`).join("");
+    const bodyHtml = rows.map((row) => `<tr>${row.map((cell) => `<td>${renderInlineMarkdown(cell)}</td>`).join("")}</tr>`).join("");
+    return `<table><thead><tr>${headerHtml}</tr></thead><tbody>${bodyHtml}</tbody></table>`;
+  }
+  function stripInlineMarkdown(value) {
+    return value.replace(/`([^`]+)`/g, "$1").replace(/\[([^\]]+)]\([^)]*\)/g, "$1").replace(/(\*\*|__)(.+?)\1/g, "$2").replace(/(\*|_)([^*_]+?)\1/g, "$2").replace(/~~(.+?)~~/g, "$1");
+  }
+  function escapeRegExp(value) {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }
+
   // src/features/response-review/web/main.ts
   var data = JSON.parse(document.getElementById("response-review-data")?.textContent ?? "{}");
   var responses = data.responses ?? [];
@@ -79,9 +291,6 @@
   function activeResponse() {
     return responses.find((response) => response.id === activeResponseId) ?? responses.at(-1);
   }
-  function escapeHtml(value) {
-    return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
-  }
   function commentKindLabel(kind) {
     return getReviewCommentKindLabel(RESPONSE_REVIEW_COMMENT_KINDS, kind, DEFAULT_RESPONSE_REVIEW_COMMENT_KIND);
   }
@@ -112,113 +321,6 @@
       if (statusEl.textContent === message)
         statusEl.textContent = "";
     }, 2200);
-  }
-  function markdownToHtml(markdown) {
-    const outline = [];
-    const lines = markdown.split(`
-`);
-    const html = [];
-    let paragraph = [];
-    let listItems = [];
-    let listTag = null;
-    let inCode = false;
-    let codeLines = [];
-    let codeLanguage = "";
-    let blockIndex = 0;
-    const flushParagraph = () => {
-      if (paragraph.length === 0)
-        return;
-      const text = paragraph.join(`
-`);
-      html.push(`<p>${inlineMarkdown(escapeHtml(text))}</p>`);
-      paragraph = [];
-    };
-    const flushList = () => {
-      if (!listTag || listItems.length === 0)
-        return;
-      html.push(`<${listTag}>${listItems.map((item) => `<li>${inlineMarkdown(escapeHtml(item))}</li>`).join("")}</${listTag}>`);
-      listItems = [];
-      listTag = null;
-    };
-    const flushTextBlocks = () => {
-      flushParagraph();
-      flushList();
-    };
-    const flushCode = () => {
-      const id = `outline-${blockIndex++}`;
-      const label = codeLanguage ? `Code · ${codeLanguage}` : "Code block";
-      outline.push({ id, label, kind: "code" });
-      const codeText = codeLines.join(`
-`);
-      const languageLabel = codeLanguage ? `<span class="code-language">${escapeHtml(codeLanguage)}</span>` : "";
-      html.push(`<pre id="${id}">${languageLabel}<button class="code-comment-button" data-code-comment="${id}">Comment block</button><code>${escapeHtml(codeText)}</code></pre>`);
-      codeLines = [];
-      codeLanguage = "";
-    };
-    for (const line of lines) {
-      const fence = line.match(/^```\s*([^`]*)\s*$/);
-      if (fence) {
-        if (inCode) {
-          flushCode();
-          inCode = false;
-        } else {
-          flushTextBlocks();
-          inCode = true;
-          codeLanguage = fence[1]?.trim() ?? "";
-        }
-        continue;
-      }
-      if (inCode) {
-        codeLines.push(line);
-        continue;
-      }
-      const heading = line.match(/^(#{1,3})\s+(.+)$/);
-      if (heading) {
-        flushTextBlocks();
-        const level = heading[1]?.length ?? 2;
-        const id = `outline-${blockIndex++}`;
-        const label = heading[2]?.trim() ?? "Heading";
-        outline.push({ id, label, kind: "heading" });
-        html.push(`<h${level} id="${id}">${inlineMarkdown(escapeHtml(label))}</h${level}>`);
-        continue;
-      }
-      if (/^\s*---+\s*$/.test(line)) {
-        flushTextBlocks();
-        html.push("<hr />");
-        continue;
-      }
-      const unordered = line.match(/^\s*[-*]\s+(.+)$/);
-      const ordered = line.match(/^\s*\d+[.)]\s+(.+)$/);
-      if (unordered || ordered) {
-        flushParagraph();
-        const nextTag = ordered ? "ol" : "ul";
-        if (listTag && listTag !== nextTag)
-          flushList();
-        listTag = nextTag;
-        listItems.push((ordered ?? unordered)?.[1] ?? "");
-        continue;
-      }
-      const quote = line.match(/^>\s?(.*)$/);
-      if (quote) {
-        flushTextBlocks();
-        html.push(`<blockquote>${inlineMarkdown(escapeHtml(quote[1] ?? ""))}</blockquote>`);
-        continue;
-      }
-      if (line.trim() === "") {
-        flushTextBlocks();
-        continue;
-      }
-      flushList();
-      paragraph.push(line);
-    }
-    if (inCode)
-      flushCode();
-    flushTextBlocks();
-    return { html: html.join(`
-`), outline };
-  }
-  function inlineMarkdown(value) {
-    return value.replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>').replace(/`([^`]+)`/g, "<code>$1</code>").replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
   }
   function renderResponses() {
     const filtered = responses.filter((response) => {
@@ -263,7 +365,10 @@
     }
     activeTitleEl.textContent = response.title;
     activeMetaEl.textContent = `${response.text.length.toLocaleString()} characters · ${comments.filter((comment) => comment.responseId === response.id).length} comments`;
-    const rendered = markdownToHtml(response.text);
+    const rendered = renderMarkdown(response.text, {
+      includeOutline: true,
+      codeCommentButtons: true
+    });
     responseContentEl.innerHTML = rendered.html;
     renderResponseCommentAnchors(response.id);
     renderOutline(rendered.outline);
@@ -398,7 +503,7 @@
       </div>
       <div class="text-xs leading-5 text-review-muted">${escapeHtml(response?.title ?? comment.responseId)}</div>
       <div class="my-2 max-h-[82px] overflow-hidden whitespace-pre-wrap border-l-2 border-review-border pl-2 text-[11px] text-review-muted">${escapeHtml(shortText(comment.selectedText, 500))}</div>
-      <div class="whitespace-pre-wrap text-[13px] leading-5 text-review-text">${escapeHtml(comment.comment)}</div>
+      <div class="markdown-body markdown-body-compact text-[13px] text-review-text">${renderMarkdown(comment.comment).html}</div>
     `;
       commentCardById.set(comment.id, card);
       card.addEventListener("click", () => {

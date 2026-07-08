@@ -1,4 +1,5 @@
 import { escapeHtml } from "../../shared/lib/utils.js";
+import { renderMarkdown } from "../../../../../shared/web/markdown.js";
 import {
   DEFAULT_DIFF_REVIEW_COMMENT_KIND,
   DIFF_REVIEW_COMMENT_KINDS,
@@ -795,7 +796,7 @@ export function renderCommentDOM(
       ${
         comment.collapsed
           ? ""
-          : `<div class="border-t border-review-border px-3 py-3 whitespace-pre-wrap break-words text-sm text-review-text">${escapeHtml(comment.body)}</div>`
+          : `<div class="markdown-body markdown-body-compact border-t border-review-border px-3 py-3 break-words text-sm text-review-text">${renderMarkdown(comment.body).html}</div>`
       }
     </div>
   `;

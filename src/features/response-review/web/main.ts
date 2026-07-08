@@ -9,6 +9,11 @@ import {
   type ResponseReviewWindowData,
   type ResponseReviewWindowMessage,
 } from "../shared/contracts/response-review.js";
+import {
+  escapeHtml,
+  renderMarkdown,
+  type MarkdownOutlineItem,
+} from "../../../shared/web/markdown.js";
 
 declare global {
   interface Window {
@@ -20,11 +25,6 @@ declare global {
   }
 }
 
-type OutlineItem = {
-  id: string;
-  label: string;
-  kind: "heading" | "code";
-};
 
 type PendingSelection = {
   text: string;
@@ -81,14 +81,6 @@ function activeResponse(): ResponseReviewResponse | undefined {
   return responses.find((response) => response.id === activeResponseId) ?? responses.at(-1);
 }
 
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
 
 function commentKindLabel(kind: ResponseReviewCommentKind): string {
   return getReviewCommentKindLabel(
@@ -133,132 +125,6 @@ function flash(message: string): void {
   }, 2200);
 }
 
-function markdownToHtml(markdown: string): { html: string; outline: OutlineItem[] } {
-  const outline: OutlineItem[] = [];
-  const lines = markdown.split("\n");
-  const html: string[] = [];
-  let paragraph: string[] = [];
-  let listItems: string[] = [];
-  let listTag: "ol" | "ul" | null = null;
-  let inCode = false;
-  let codeLines: string[] = [];
-  let codeLanguage = "";
-  let blockIndex = 0;
-
-  const flushParagraph = (): void => {
-    if (paragraph.length === 0) return;
-    const text = paragraph.join("\n");
-    html.push(`<p>${inlineMarkdown(escapeHtml(text))}</p>`);
-    paragraph = [];
-  };
-
-  const flushList = (): void => {
-    if (!listTag || listItems.length === 0) return;
-    html.push(
-      `<${listTag}>${listItems.map((item) => `<li>${inlineMarkdown(escapeHtml(item))}</li>`).join("")}</${listTag}>`,
-    );
-    listItems = [];
-    listTag = null;
-  };
-
-  const flushTextBlocks = (): void => {
-    flushParagraph();
-    flushList();
-  };
-
-  const flushCode = (): void => {
-    const id = `outline-${blockIndex++}`;
-    const label = codeLanguage ? `Code · ${codeLanguage}` : "Code block";
-    outline.push({ id, label, kind: "code" });
-    const codeText = codeLines.join("\n");
-    const languageLabel = codeLanguage
-      ? `<span class="code-language">${escapeHtml(codeLanguage)}</span>`
-      : "";
-    html.push(
-      `<pre id="${id}">${languageLabel}<button class="code-comment-button" data-code-comment="${id}">Comment block</button><code>${escapeHtml(codeText)}</code></pre>`,
-    );
-    codeLines = [];
-    codeLanguage = "";
-  };
-
-  for (const line of lines) {
-    const fence = line.match(/^```\s*([^`]*)\s*$/);
-    if (fence) {
-      if (inCode) {
-        flushCode();
-        inCode = false;
-      } else {
-        flushTextBlocks();
-        inCode = true;
-        codeLanguage = fence[1]?.trim() ?? "";
-      }
-      continue;
-    }
-
-    if (inCode) {
-      codeLines.push(line);
-      continue;
-    }
-
-    const heading = line.match(/^(#{1,3})\s+(.+)$/);
-    if (heading) {
-      flushTextBlocks();
-      const level = heading[1]?.length ?? 2;
-      const id = `outline-${blockIndex++}`;
-      const label = heading[2]?.trim() ?? "Heading";
-      outline.push({ id, label, kind: "heading" });
-      html.push(`<h${level} id="${id}">${inlineMarkdown(escapeHtml(label))}</h${level}>`);
-      continue;
-    }
-
-    if (/^\s*---+\s*$/.test(line)) {
-      flushTextBlocks();
-      html.push("<hr />");
-      continue;
-    }
-
-    const unordered = line.match(/^\s*[-*]\s+(.+)$/);
-    const ordered = line.match(/^\s*\d+[.)]\s+(.+)$/);
-    if (unordered || ordered) {
-      flushParagraph();
-      const nextTag = ordered ? "ol" : "ul";
-      if (listTag && listTag !== nextTag) flushList();
-      listTag = nextTag;
-      listItems.push((ordered ?? unordered)?.[1] ?? "");
-      continue;
-    }
-
-    const quote = line.match(/^>\s?(.*)$/);
-    if (quote) {
-      flushTextBlocks();
-      html.push(`<blockquote>${inlineMarkdown(escapeHtml(quote[1] ?? ""))}</blockquote>`);
-      continue;
-    }
-
-    if (line.trim() === "") {
-      flushTextBlocks();
-      continue;
-    }
-
-    flushList();
-    paragraph.push(line);
-  }
-
-  if (inCode) flushCode();
-  flushTextBlocks();
-
-  return { html: html.join("\n"), outline };
-}
-
-function inlineMarkdown(value: string): string {
-  return value
-    .replace(
-      /\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g,
-      '<a href="$2" target="_blank" rel="noreferrer">$1</a>',
-    )
-    .replace(/`([^`]+)`/g, "<code>$1</code>")
-    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
-}
 
 function renderResponses(): void {
   const filtered = responses.filter((response) => {
@@ -308,14 +174,17 @@ function renderActiveResponse(): void {
 
   activeTitleEl.textContent = response.title;
   activeMetaEl.textContent = `${response.text.length.toLocaleString()} characters · ${comments.filter((comment) => comment.responseId === response.id).length} comments`;
-  const rendered = markdownToHtml(response.text);
+  const rendered = renderMarkdown(response.text, {
+    includeOutline: true,
+    codeCommentButtons: true,
+  });
   responseContentEl.innerHTML = rendered.html;
   renderResponseCommentAnchors(response.id);
   renderOutline(rendered.outline);
   bindCodeCommentButtons();
 }
 
-function renderOutline(outline: OutlineItem[]): void {
+function renderOutline(outline: MarkdownOutlineItem[]): void {
   outlineListEl.innerHTML = "";
   if (outline.length === 0) {
     outlineListEl.innerHTML = `<div class="text-xs leading-5 text-review-muted">No headings or code blocks found.</div>`;
@@ -482,7 +351,7 @@ function renderComments(): void {
       </div>
       <div class="text-xs leading-5 text-review-muted">${escapeHtml(response?.title ?? comment.responseId)}</div>
       <div class="my-2 max-h-[82px] overflow-hidden whitespace-pre-wrap border-l-2 border-review-border pl-2 text-[11px] text-review-muted">${escapeHtml(shortText(comment.selectedText, 500))}</div>
-      <div class="whitespace-pre-wrap text-[13px] leading-5 text-review-text">${escapeHtml(comment.comment)}</div>
+      <div class="markdown-body markdown-body-compact text-[13px] text-review-text">${renderMarkdown(comment.comment).html}</div>
     `;
     commentCardById.set(comment.id, card);
     card.addEventListener("click", () => {

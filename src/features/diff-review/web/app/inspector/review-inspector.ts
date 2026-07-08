@@ -1,4 +1,5 @@
 import { escapeHtml, inferLanguage } from "../../shared/lib/utils.js";
+import { renderMarkdown } from "../../../../../shared/web/markdown.js";
 import type {
   DiffReviewComment,
   DiffReviewCommentKind,
@@ -130,7 +131,7 @@ export function createReviewInspectorController(
         "rounded-md border border-review-border bg-review-panel-2 px-3 py-3";
       const kindLabel = escapeHtml(getCommentKindLabel(getCommentKind(comment)));
       const locationLabel = escapeHtml(getCommentLocationLabel(comment));
-      const body = escapeHtml(comment.body);
+      const body = renderMarkdown(comment.body).html;
       item.innerHTML = `
         <div class="flex items-start justify-between gap-2">
           <button data-action="open" class="min-w-0 flex-1 text-left">
@@ -145,7 +146,7 @@ export function createReviewInspectorController(
             <button data-action="delete" class="cursor-pointer rounded-md border border-review-border bg-[#0d1117] px-2 py-1 text-[11px] font-medium text-review-text hover:border-red-500/30 hover:bg-red-500/10 hover:text-red-400">Delete</button>
           </div>
         </div>
-        <div class="mt-2 line-clamp-3 whitespace-pre-wrap break-words text-sm text-review-text">${body}</div>
+        <div class="markdown-body markdown-body-compact mt-2 line-clamp-3 break-words text-sm text-review-text">${body}</div>
       `;
       (
         item.querySelector("[data-action='open']") as HTMLButtonElement | null
