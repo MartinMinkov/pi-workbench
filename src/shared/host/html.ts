@@ -19,6 +19,6 @@ export function buildInlineWebAppHtml(appName: string, data: unknown): string {
   const payload = escapeForInlineScript(JSON.stringify(data));
 
   return templateHtml
-    .replace("__INLINE_DATA__", payload)
-    .replace("__INLINE_JS__", appJs);
+    .replace("__INLINE_DATA__", () => payload)
+    .replace("__INLINE_JS__", () => appJs);
 }

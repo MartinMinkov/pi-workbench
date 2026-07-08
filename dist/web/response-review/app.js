@@ -62,10 +62,12 @@
         const marker = fence[1] ?? "```";
         const language = (fence[2] ?? "").trim();
         const codeLines = [];
+        const fenceCharacter = marker.startsWith("~") ? "~" : "`";
+        const closingFencePattern = new RegExp(`^\\s*${escapeRegExp(fenceCharacter)}{${marker.length},}\\s*$`);
         index += 1;
         while (index < lines.length) {
           const candidate = lines[index] ?? "";
-          if (new RegExp(`^\\s*${escapeRegExp(marker[0] ?? "`")}{${marker.length},}\\s*$`).test(candidate)) {
+          if (closingFencePattern.test(candidate)) {
             index += 1;
             break;
           }
