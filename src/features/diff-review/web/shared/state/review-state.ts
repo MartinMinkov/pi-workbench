@@ -1,10 +1,11 @@
-import type {
-  ChangeStatus,
-  DiffReviewComment,
-  DiffReviewCommentKind,
-  ReviewFile,
-  ReviewFileContents,
-  ReviewScope,
+import {
+  DEFAULT_DIFF_REVIEW_COMMENT_KIND,
+  type ChangeStatus,
+  type DiffReviewComment,
+  type DiffReviewCommentKind,
+  type ReviewFile,
+  type ReviewFileContents,
+  type ReviewScope,
 } from "../contracts/review.js";
 
 export interface ReviewState {
@@ -53,7 +54,7 @@ export function createInitialReviewState(reviewData: {
         : "all-files",
     comments: [],
     overallComment: "",
-    overallCommentKind: "feedback",
+    overallCommentKind: DEFAULT_DIFF_REVIEW_COMMENT_KIND,
     hideUnchanged: false,
     wrapLines: true,
     collapsedDirs: {},

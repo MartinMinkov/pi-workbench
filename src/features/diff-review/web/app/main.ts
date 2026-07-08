@@ -28,6 +28,7 @@ import {
 import { createSidebarController } from "../features/file-tree/sidebar.js";
 import type { ReviewSidebarController } from "../features/file-tree/sidebar.js";
 import {
+  DEFAULT_DIFF_REVIEW_COMMENT_KIND,
   type ChangeStatus,
   type DiffReviewComment,
   type ReviewDefinitionDataMessage,
@@ -667,7 +668,7 @@ function showFileCommentModal() {
     title: `File comment for ${getScopeDisplayPath(file, state.currentScope)}`,
     description: `This comment applies to the whole file in ${scopeLabel(state.currentScope).toLowerCase()}.`,
     initialValue: "",
-    initialKind: "feedback",
+    initialKind: DEFAULT_DIFF_REVIEW_COMMENT_KIND,
     saveLabel: "Add comment",
     onSave: ({ body, kind }) => {
       if (!body) return;

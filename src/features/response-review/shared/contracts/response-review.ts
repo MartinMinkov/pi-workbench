@@ -1,9 +1,11 @@
-export type ResponseReviewCommentKind =
-  | "feedback"
-  | "question"
-  | "correction"
-  | "preference"
-  | "follow-up";
+import type { ResponseReviewCommentKind } from "../../../../shared/contracts/review-comment-kinds.js";
+export {
+  DEFAULT_RESPONSE_REVIEW_COMMENT_KIND,
+  getReviewCommentKindLabel,
+  getReviewCommentKindPromptLabel,
+  RESPONSE_REVIEW_COMMENT_KINDS,
+} from "../../../../shared/contracts/review-comment-kinds.js";
+export type { ResponseReviewCommentKind } from "../../../../shared/contracts/review-comment-kinds.js";
 
 export type ResponseReviewResponse = {
   id: string;
@@ -33,6 +35,7 @@ export type ResponseReviewSubmitPayload = {
   requestId: string;
   activeResponseId: string;
   overallComment: string;
+  overallCommentKind: ResponseReviewCommentKind;
   draft: string;
   comments: ResponseReviewComment[];
 };

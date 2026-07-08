@@ -6,6 +6,7 @@
   "scripts": {
     "check": "tsc -p tsconfig.json",
     "check:web": "tsc -p tsconfig.web.json",
+    "test": "bun test test",
     "lint": "eslint src scripts eslint.config.js",
     "lint:fix": "eslint src scripts eslint.config.js --fix",
     "build:web": "node scripts/build-web.mjs",

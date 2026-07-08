@@ -1,9 +1,12 @@
-import type {
-  DiffReviewComment,
-  DiffReviewCommentKind,
-  ReviewFile,
-  ReviewScope,
-  ReviewSubmitPayload,
+import {
+  DEFAULT_DIFF_REVIEW_COMMENT_KIND,
+  DIFF_REVIEW_COMMENT_KINDS,
+  getReviewCommentKindPromptLabel,
+  type DiffReviewComment,
+  type DiffReviewCommentKind,
+  type ReviewFile,
+  type ReviewScope,
+  type ReviewSubmitPayload,
 } from "../../shared/contracts/review.js";
 
 function formatScopeLabel(scope: ReviewScope): string {
@@ -56,18 +59,11 @@ function formatLocation(
 }
 
 function formatCommentKind(kind: DiffReviewCommentKind | undefined): string {
-  switch (kind) {
-    case "question":
-      return "Question";
-    case "risk":
-      return "Risk";
-    case "explain":
-      return "Explain";
-    case "tests":
-      return "Tests";
-    default:
-      return "Feedback";
-  }
+  return getReviewCommentKindPromptLabel(
+    DIFF_REVIEW_COMMENT_KINDS,
+    kind,
+    DEFAULT_DIFF_REVIEW_COMMENT_KIND,
+  );
 }
 
 function appendReviewInstructions(lines: string[]): void {

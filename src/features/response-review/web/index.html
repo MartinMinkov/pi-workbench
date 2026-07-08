@@ -77,6 +77,43 @@
         white-space: pre-wrap;
       }
 
+      .response-content ul,
+      .response-content ol {
+        margin: 12px 0;
+        padding-left: 28px;
+      }
+
+      .response-content ul {
+        list-style: disc;
+      }
+
+      .response-content ol {
+        list-style: decimal;
+      }
+
+      .response-content li {
+        margin: 6px 0;
+      }
+
+      .response-content blockquote {
+        margin: 14px 0;
+        border-left: 3px solid #30363d;
+        padding: 2px 0 2px 14px;
+        color: #8b949e;
+      }
+
+      .response-content hr {
+        margin: 24px 0;
+        border: 0;
+        border-top: 1px solid #30363d;
+      }
+
+      .response-content a {
+        color: #58a6ff;
+        text-decoration: underline;
+        text-underline-offset: 2px;
+      }
+
       .response-content pre {
         position: relative;
         overflow: auto;
@@ -90,6 +127,32 @@
       .response-content code {
         font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
         font-size: 13px;
+      }
+
+      .code-language {
+        position: absolute;
+        top: 8px;
+        left: 10px;
+        border: 1px solid #30363d;
+        border-radius: 999px;
+        background: #11161d;
+        color: #8b949e;
+        padding: 2px 8px;
+        font-size: 11px;
+        font-weight: 700;
+      }
+
+      .response-comment-anchor {
+        cursor: pointer;
+        border-radius: 4px;
+        background: rgba(210, 153, 34, 0.22);
+        color: inherit;
+        outline: 1px solid rgba(210, 153, 34, 0.3);
+      }
+
+      .response-comment-anchor.is-selected {
+        background: rgba(88, 166, 255, 0.24);
+        outline-color: rgba(88, 166, 255, 0.55);
       }
 
       .code-comment-button {
@@ -231,13 +294,19 @@
           class="scrollbar-thin min-h-0 overflow-auto border-l border-review-border bg-review-bg/90"
         >
           <div class="border-b border-review-border p-3.5">
-            <div class="mb-2.5 text-[11px] font-extrabold tracking-wide text-review-muted uppercase">
-              Overall feedback
+            <div class="mb-2 flex items-center justify-between gap-2">
+              <div class="text-[11px] font-extrabold tracking-wide text-review-muted uppercase">
+                Overall feedback
+              </div>
+              <select
+                id="overall-kind"
+                class="rounded-lg border border-review-border bg-[#0b1016] px-2 py-1 text-xs font-semibold text-review-text outline-none focus:border-review-accent"
+              ></select>
             </div>
             <textarea
               id="overall-comment"
               class="min-h-[88px] w-full resize-y rounded-lg border border-review-border bg-[#0b1016] px-2.5 py-2 text-sm leading-6 text-review-text outline-none focus:border-review-accent"
-              placeholder="High-level feedback for the assistant…"
+              placeholder="High-level question or feedback for the assistant…"
             ></textarea>
           </div>
           <div class="border-b border-review-border p-3.5">
@@ -286,11 +355,7 @@
               id="modal-kind"
               class="w-full rounded-lg border border-review-border bg-[#0b1016] px-2.5 py-2 text-sm text-review-text outline-none focus:border-review-accent"
             >
-              <option value="feedback">Feedback</option>
-              <option value="question">Question</option>
-              <option value="correction">Correction</option>
-              <option value="preference">Preference</option>
-              <option value="follow-up">Follow-up</option>
+
             </select>
           </div>
           <div>

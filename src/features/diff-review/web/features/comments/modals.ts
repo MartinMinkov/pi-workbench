@@ -1,7 +1,10 @@
 import { escapeHtml } from "../../shared/lib/utils.js";
-import type {
-  DiffReviewComment,
-  DiffReviewCommentKind,
+import {
+  DEFAULT_DIFF_REVIEW_COMMENT_KIND,
+  DIFF_REVIEW_COMMENT_KINDS,
+  getReviewCommentKindLabel,
+  type DiffReviewComment,
+  type DiffReviewCommentKind,
 } from "../../shared/contracts/review.js";
 
 interface CommentRenderOptions {
@@ -87,18 +90,18 @@ export interface CommandPaletteOptions {
 }
 
 function getCommentKindLabel(kind: DiffReviewCommentKind): string {
-  switch (kind) {
-    case "question":
-      return "Question";
-    case "risk":
-      return "Risk";
-    case "explain":
-      return "Explain";
-    case "tests":
-      return "Tests";
-    default:
-      return "Feedback";
-  }
+  return getReviewCommentKindLabel(
+    DIFF_REVIEW_COMMENT_KINDS,
+    kind,
+    DEFAULT_DIFF_REVIEW_COMMENT_KIND,
+  );
+}
+
+function renderCommentKindOptions(): string {
+  return DIFF_REVIEW_COMMENT_KINDS.map(
+    (definition) =>
+      `<option value="${escapeHtml(definition.value)}" title="${escapeHtml(definition.description)}">${escapeHtml(definition.label)}</option>`,
+  ).join("");
 }
 
 function insertAtCursor(textarea: HTMLTextAreaElement, value: string): void {
@@ -139,11 +142,7 @@ export function showTextModal(options: TextModalOptions): void {
       <div class="mb-4 text-sm text-review-muted">${escapeHtml(options.description)}</div>
       <div class="mb-3">
         <select id="review-text-kind" class="rounded-md border border-review-border bg-[#010409] px-2 py-1.5 text-xs font-medium text-review-text outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500">
-          <option value="feedback">Feedback</option>
-          <option value="question">Question</option>
-          <option value="risk">Risk</option>
-          <option value="explain">Explain</option>
-          <option value="tests">Tests</option>
+          ${renderCommentKindOptions()}
         </select>
       </div>
       <textarea id="review-modal-text" rows="12" class="scrollbar-thin min-h-[240px] w-full resize-y overflow-auto rounded-md border border-review-border bg-[#010409] px-3 py-2 text-sm text-review-text outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500">${escapeHtml(options.initialValue ?? "")}</textarea>
@@ -179,14 +178,14 @@ export function showTextModal(options: TextModalOptions): void {
   }
 
   if (kindSelect) {
-    kindSelect.value = options.initialKind ?? "feedback";
+    kindSelect.value = options.initialKind ?? DEFAULT_DIFF_REVIEW_COMMENT_KIND;
   }
 
   if (saveButton && textarea) {
     saveButton.addEventListener("click", () => {
       options.onSave({
         body: textarea.value.trim(),
-        kind: (kindSelect?.value as DiffReviewCommentKind | undefined) ?? "feedback",
+        kind: (kindSelect?.value as DiffReviewCommentKind | undefined) ?? DEFAULT_DIFF_REVIEW_COMMENT_KIND,
       });
       close();
     });
@@ -212,11 +211,7 @@ export function showCommentEditModal(options: CommentEditModalOptions): void {
       <div class="mb-4 text-sm text-review-muted">${escapeHtml(options.description)}</div>
       <div class="mb-3">
         <select id="review-comment-kind" class="rounded-md border border-review-border bg-[#010409] px-2 py-1.5 text-xs font-medium text-review-text outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500">
-          <option value="feedback">Feedback</option>
-          <option value="question">Question</option>
-          <option value="risk">Risk</option>
-          <option value="explain">Explain</option>
-          <option value="tests">Tests</option>
+          ${renderCommentKindOptions()}
         </select>
       </div>
       <textarea id="review-comment-body" rows="10" class="scrollbar-thin min-h-[220px] w-full resize-y overflow-auto rounded-md border border-review-border bg-[#010409] px-3 py-2 text-sm text-review-text outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500">${escapeHtml(options.initialBody ?? "")}</textarea>
@@ -257,7 +252,7 @@ export function showCommentEditModal(options: CommentEditModalOptions): void {
     if (!body) return;
     options.onSave({
       body,
-      kind: (kindSelect?.value as DiffReviewCommentKind | undefined) ?? "feedback",
+      kind: (kindSelect?.value as DiffReviewCommentKind | undefined) ?? DEFAULT_DIFF_REVIEW_COMMENT_KIND,
     });
     close();
   });
@@ -701,11 +696,7 @@ export function renderCommentDOM(
           <div class="truncate text-xs font-semibold text-review-text">${escapeHtml(title)}</div>
           <div class="mt-2">
             <select data-comment-kind class="rounded-md border border-review-border bg-[#010409] px-2 py-1 text-xs font-medium text-review-text outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500">
-              <option value="feedback">Feedback</option>
-              <option value="question">Question</option>
-              <option value="risk">Risk</option>
-              <option value="explain">Explain</option>
-              <option value="tests">Tests</option>
+              ${renderCommentKindOptions()}
             </select>
           </div>
         </div>
@@ -736,7 +727,7 @@ export function renderCommentDOM(
 
     textarea.value = comment.body || "";
     if (kindSelect) {
-      kindSelect.value = comment.kind ?? "feedback";
+      kindSelect.value = comment.kind ?? DEFAULT_DIFF_REVIEW_COMMENT_KIND;
       kindSelect.addEventListener("change", () => {
         comment.kind = kindSelect.value as DiffReviewCommentKind;
       });
@@ -774,7 +765,7 @@ export function renderCommentDOM(
 
   const preview = comment.body.trim().split("\n")[0] || "Comment";
   const toggleLabel = comment.collapsed ? "Expand comment" : "Collapse comment";
-  const kind = comment.kind ?? "feedback";
+  const kind = comment.kind ?? DEFAULT_DIFF_REVIEW_COMMENT_KIND;
   container.innerHTML = `
     <div class="rounded-md border border-review-border bg-review-panel">
       <div class="flex items-center gap-2 px-3 py-2">

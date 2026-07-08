@@ -1,28 +1,24 @@
-import type {
-  DiffReviewComment,
-  DiffReviewCommentKind,
-  ReviewNavigationTarget,
+import {
+  DEFAULT_DIFF_REVIEW_COMMENT_KIND,
+  DIFF_REVIEW_COMMENT_KINDS,
+  getReviewCommentKindLabel,
+  type DiffReviewCommentKind,
+  type DiffReviewComment,
+  type ReviewNavigationTarget,
 } from "../../shared/contracts/review.js";
 
 export function getCommentKind(
   comment: DiffReviewComment,
 ): DiffReviewCommentKind {
-  return comment.kind ?? "feedback";
+  return comment.kind ?? DEFAULT_DIFF_REVIEW_COMMENT_KIND;
 }
 
 export function getCommentKindLabel(kind: DiffReviewCommentKind): string {
-  switch (kind) {
-    case "question":
-      return "Question";
-    case "risk":
-      return "Risk";
-    case "explain":
-      return "Explain";
-    case "tests":
-      return "Tests";
-    default:
-      return "Feedback";
-  }
+  return getReviewCommentKindLabel(
+    DIFF_REVIEW_COMMENT_KINDS,
+    kind,
+    DEFAULT_DIFF_REVIEW_COMMENT_KIND,
+  );
 }
 
 export function createComment(
@@ -32,7 +28,7 @@ export function createComment(
 ): DiffReviewComment {
   return {
     id: `${Date.now()}:${Math.random().toString(16).slice(2)}`,
-    kind: partial.kind ?? "feedback",
+    kind: partial.kind ?? DEFAULT_DIFF_REVIEW_COMMENT_KIND,
     ...partial,
   };
 }

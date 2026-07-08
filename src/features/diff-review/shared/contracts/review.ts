@@ -1,3 +1,12 @@
+import type { DiffReviewCommentKind } from "../../../../shared/contracts/review-comment-kinds.js";
+export {
+  DEFAULT_DIFF_REVIEW_COMMENT_KIND,
+  DIFF_REVIEW_COMMENT_KINDS,
+  getReviewCommentKindLabel,
+  getReviewCommentKindPromptLabel,
+} from "../../../../shared/contracts/review-comment-kinds.js";
+export type { DiffReviewCommentKind } from "../../../../shared/contracts/review-comment-kinds.js";
+
 export type ReviewScope = "git-diff" | "last-commit" | "all-files";
 
 export type ChangeStatus = "modified" | "added" | "deleted" | "renamed";
@@ -50,12 +59,6 @@ export interface ReviewNavigationTarget {
 
 export type CommentSide = "original" | "modified" | "file";
 export type DiffReviewCommentStatus = "draft" | "submitted";
-export type DiffReviewCommentKind =
-  | "feedback"
-  | "question"
-  | "risk"
-  | "explain"
-  | "tests";
 
 export interface DiffReviewComment {
   id: string;

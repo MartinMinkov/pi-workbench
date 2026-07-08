@@ -1,23 +1,19 @@
-import type {
-  ResponseReviewComment,
-  ResponseReviewCommentKind,
-  ResponseReviewResponse,
-  ResponseReviewSubmitPayload,
+import {
+  DEFAULT_RESPONSE_REVIEW_COMMENT_KIND,
+  getReviewCommentKindPromptLabel,
+  RESPONSE_REVIEW_COMMENT_KINDS,
+  type ResponseReviewComment,
+  type ResponseReviewCommentKind,
+  type ResponseReviewResponse,
+  type ResponseReviewSubmitPayload,
 } from "../shared/contracts/response-review.js";
 
 function formatCommentKind(kind: ResponseReviewCommentKind | undefined): string {
-  switch (kind) {
-    case "question":
-      return "Question";
-    case "correction":
-      return "Correction";
-    case "preference":
-      return "Preference";
-    case "follow-up":
-      return "Follow-up";
-    default:
-      return "Feedback";
-  }
+  return getReviewCommentKindPromptLabel(
+    RESPONSE_REVIEW_COMMENT_KINDS,
+    kind,
+    DEFAULT_RESPONSE_REVIEW_COMMENT_KIND,
+  );
 }
 
 function excerpt(text: string, max = 700): string {
@@ -100,7 +96,7 @@ export function composeResponseReviewPrompt(
 
   const overallComment = payload.overallComment.trim();
   if (overallComment.length > 0) {
-    lines.push("0. [Feedback] [overall]");
+    lines.push(`0. [${formatCommentKind(payload.overallCommentKind)}] [overall]`);
     for (const line of overallComment.split("\n")) {
       lines.push(`   ${line}`);
     }

@@ -1,10 +1,13 @@
-import type {
-  ResponseReviewComment,
-  ResponseReviewCommentKind,
-  ResponseReviewHostMessage,
-  ResponseReviewResponse,
-  ResponseReviewWindowData,
-  ResponseReviewWindowMessage,
+import {
+  DEFAULT_RESPONSE_REVIEW_COMMENT_KIND,
+  getReviewCommentKindLabel,
+  RESPONSE_REVIEW_COMMENT_KINDS,
+  type ResponseReviewComment,
+  type ResponseReviewCommentKind,
+  type ResponseReviewHostMessage,
+  type ResponseReviewResponse,
+  type ResponseReviewWindowData,
+  type ResponseReviewWindowMessage,
 } from "../shared/contracts/response-review.js";
 
 declare global {
@@ -52,6 +55,7 @@ const commentSelectionButton = requireElement<HTMLButtonElement>("comment-select
 const copySelectionButton = requireElement<HTMLButtonElement>("copy-selection-button");
 const commentListEl = requireElement<HTMLDivElement>("comment-list");
 const overallCommentEl = requireElement<HTMLTextAreaElement>("overall-comment");
+const overallKindEl = requireElement<HTMLSelectElement>("overall-kind");
 const draftEl = requireElement<HTMLTextAreaElement>("draft");
 const submitButton = requireElement<HTMLButtonElement>("submit-button");
 const cancelButton = requireElement<HTMLButtonElement>("cancel-button");
@@ -62,7 +66,11 @@ const modalKindEl = requireElement<HTMLSelectElement>("modal-kind");
 const modalCommentEl = requireElement<HTMLTextAreaElement>("modal-comment");
 const modalCancelButton = requireElement<HTMLButtonElement>("modal-cancel");
 const modalSaveButton = requireElement<HTMLButtonElement>("modal-save");
+const commentCardById = new Map<string, HTMLDivElement>();
 
+
+let selectedCommentId: string | null = null;
+let staleCommentIds = new Set<string>();
 function requireElement<T extends HTMLElement>(id: string): T {
   const element = document.getElementById(id);
   if (!element) throw new Error(`Missing #${id}`);
@@ -80,6 +88,29 @@ function escapeHtml(value: string): string {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
+}
+
+function commentKindLabel(kind: ResponseReviewCommentKind): string {
+  return getReviewCommentKindLabel(
+    RESPONSE_REVIEW_COMMENT_KINDS,
+    kind,
+    DEFAULT_RESPONSE_REVIEW_COMMENT_KIND,
+  );
+}
+
+function renderKindOptions(selectedKind: ResponseReviewCommentKind): string {
+  return RESPONSE_REVIEW_COMMENT_KINDS.map((definition) => {
+    const selected = definition.value === selectedKind ? " selected" : "";
+    return `<option value="${escapeHtml(definition.value)}" title="${escapeHtml(definition.description)}"${selected}>${escapeHtml(definition.label)}</option>`;
+  }).join("");
+}
+
+function populateKindSelect(
+  select: HTMLSelectElement,
+  selectedKind: ResponseReviewCommentKind,
+): void {
+  select.innerHTML = renderKindOptions(selectedKind);
+  select.value = selectedKind;
 }
 
 function shortText(value: string, max = 220): string {
@@ -107,6 +138,8 @@ function markdownToHtml(markdown: string): { html: string; outline: OutlineItem[
   const lines = markdown.split("\n");
   const html: string[] = [];
   let paragraph: string[] = [];
+  let listItems: string[] = [];
+  let listTag: "ol" | "ul" | null = null;
   let inCode = false;
   let codeLines: string[] = [];
   let codeLanguage = "";
@@ -119,13 +152,30 @@ function markdownToHtml(markdown: string): { html: string; outline: OutlineItem[
     paragraph = [];
   };
 
+  const flushList = (): void => {
+    if (!listTag || listItems.length === 0) return;
+    html.push(
+      `<${listTag}>${listItems.map((item) => `<li>${inlineMarkdown(escapeHtml(item))}</li>`).join("")}</${listTag}>`,
+    );
+    listItems = [];
+    listTag = null;
+  };
+
+  const flushTextBlocks = (): void => {
+    flushParagraph();
+    flushList();
+  };
+
   const flushCode = (): void => {
     const id = `outline-${blockIndex++}`;
     const label = codeLanguage ? `Code · ${codeLanguage}` : "Code block";
     outline.push({ id, label, kind: "code" });
     const codeText = codeLines.join("\n");
+    const languageLabel = codeLanguage
+      ? `<span class="code-language">${escapeHtml(codeLanguage)}</span>`
+      : "";
     html.push(
-      `<pre id="${id}"><button class="code-comment-button" data-code-comment="${id}">Comment block</button><code>${escapeHtml(codeText)}</code></pre>`,
+      `<pre id="${id}">${languageLabel}<button class="code-comment-button" data-code-comment="${id}">Comment block</button><code>${escapeHtml(codeText)}</code></pre>`,
     );
     codeLines = [];
     codeLanguage = "";
@@ -138,7 +188,7 @@ function markdownToHtml(markdown: string): { html: string; outline: OutlineItem[
         flushCode();
         inCode = false;
       } else {
-        flushParagraph();
+        flushTextBlocks();
         inCode = true;
         codeLanguage = fence[1]?.trim() ?? "";
       }
@@ -152,7 +202,7 @@ function markdownToHtml(markdown: string): { html: string; outline: OutlineItem[
 
     const heading = line.match(/^(#{1,3})\s+(.+)$/);
     if (heading) {
-      flushParagraph();
+      flushTextBlocks();
       const level = heading[1]?.length ?? 2;
       const id = `outline-${blockIndex++}`;
       const label = heading[2]?.trim() ?? "Heading";
@@ -161,22 +211,51 @@ function markdownToHtml(markdown: string): { html: string; outline: OutlineItem[
       continue;
     }
 
-    if (line.trim() === "") {
-      flushParagraph();
+    if (/^\s*---+\s*$/.test(line)) {
+      flushTextBlocks();
+      html.push("<hr />");
       continue;
     }
 
+    const unordered = line.match(/^\s*[-*]\s+(.+)$/);
+    const ordered = line.match(/^\s*\d+[.)]\s+(.+)$/);
+    if (unordered || ordered) {
+      flushParagraph();
+      const nextTag = ordered ? "ol" : "ul";
+      if (listTag && listTag !== nextTag) flushList();
+      listTag = nextTag;
+      listItems.push((ordered ?? unordered)?.[1] ?? "");
+      continue;
+    }
+
+    const quote = line.match(/^>\s?(.*)$/);
+    if (quote) {
+      flushTextBlocks();
+      html.push(`<blockquote>${inlineMarkdown(escapeHtml(quote[1] ?? ""))}</blockquote>`);
+      continue;
+    }
+
+    if (line.trim() === "") {
+      flushTextBlocks();
+      continue;
+    }
+
+    flushList();
     paragraph.push(line);
   }
 
   if (inCode) flushCode();
-  flushParagraph();
+  flushTextBlocks();
 
   return { html: html.join("\n"), outline };
 }
 
 function inlineMarkdown(value: string): string {
   return value
+    .replace(
+      /\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g,
+      '<a href="$2" target="_blank" rel="noreferrer">$1</a>',
+    )
     .replace(/`([^`]+)`/g, "<code>$1</code>")
     .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
 }
@@ -231,6 +310,7 @@ function renderActiveResponse(): void {
   activeMetaEl.textContent = `${response.text.length.toLocaleString()} characters · ${comments.filter((comment) => comment.responseId === response.id).length} comments`;
   const rendered = markdownToHtml(response.text);
   responseContentEl.innerHTML = rendered.html;
+  renderResponseCommentAnchors(response.id);
   renderOutline(rendered.outline);
   bindCodeCommentButtons();
 }
@@ -264,8 +344,114 @@ function bindCodeCommentButtons(): void {
   });
 }
 
+function createRangeForTextOffsets(
+  root: HTMLElement,
+  startOffset: number,
+  endOffset: number,
+): Range | null {
+  if (startOffset < 0 || endOffset <= startOffset) return null;
+
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  let currentOffset = 0;
+  let startNode: Text | null = null;
+  let endNode: Text | null = null;
+  let startNodeOffset = 0;
+  let endNodeOffset = 0;
+  let node = walker.nextNode() as Text | null;
+
+  while (node) {
+    const length = node.nodeValue?.length ?? 0;
+    const nextOffset = currentOffset + length;
+
+    if (!startNode && startOffset >= currentOffset && startOffset <= nextOffset) {
+      startNode = node;
+      startNodeOffset = startOffset - currentOffset;
+    }
+
+    if (!endNode && endOffset >= currentOffset && endOffset <= nextOffset) {
+      endNode = node;
+      endNodeOffset = endOffset - currentOffset;
+      break;
+    }
+
+    currentOffset = nextOffset;
+    node = walker.nextNode() as Text | null;
+  }
+
+  if (!startNode || !endNode) return null;
+
+  const range = document.createRange();
+  range.setStart(startNode, startNodeOffset);
+  range.setEnd(endNode, endNodeOffset);
+  return range.collapsed ? null : range;
+}
+
+function renderResponseCommentAnchors(responseId: string): void {
+  const nextStaleCommentIds = new Set(
+    [...staleCommentIds].filter((commentId) => {
+      return comments.find((comment) => comment.id === commentId)?.responseId !== responseId;
+    }),
+  );
+
+  const anchoredComments = comments
+    .filter(
+      (comment) =>
+        comment.responseId === responseId &&
+        comment.startOffset !== undefined &&
+        comment.endOffset !== undefined,
+    )
+    .sort((left, right) => (right.startOffset ?? 0) - (left.startOffset ?? 0));
+
+  for (const comment of anchoredComments) {
+    const range = createRangeForTextOffsets(
+      responseContentEl,
+      comment.startOffset ?? 0,
+      comment.endOffset ?? 0,
+    );
+    if (!range) {
+      nextStaleCommentIds.add(comment.id);
+      continue;
+    }
+
+    const marker = document.createElement("mark");
+    marker.className = [
+      "response-comment-anchor",
+      comment.id === selectedCommentId ? "is-selected" : "",
+    ].filter(Boolean).join(" ");
+    marker.dataset.commentId = comment.id;
+    marker.title = `${commentKindLabel(comment.kind)}: ${shortText(comment.comment, 120)}`;
+
+    try {
+      range.surroundContents(marker);
+    } catch {
+      marker.appendChild(range.extractContents());
+      range.insertNode(marker);
+    }
+
+    marker.addEventListener("click", () => {
+      selectComment(comment.id, { scrollQueue: true });
+    });
+  }
+
+  staleCommentIds = nextStaleCommentIds;
+}
+
+function selectComment(
+  commentId: string,
+  options: { scrollQueue?: boolean } = {},
+): void {
+  selectedCommentId = commentId;
+  renderComments();
+  if (!options.scrollQueue) return;
+  commentCardById.get(commentId)?.scrollIntoView({
+    block: "nearest",
+    behavior: "smooth",
+  });
+}
+
 function renderComments(): void {
   commentListEl.innerHTML = "";
+  commentCardById.clear();
   if (comments.length === 0) {
     commentListEl.innerHTML = `<div class="text-xs leading-5 text-review-muted">No comments yet. Select text in the response and press C.</div>`;
     return;
@@ -274,10 +460,20 @@ function renderComments(): void {
   for (const comment of comments) {
     const response = responses.find((item) => item.id === comment.responseId);
     const card = document.createElement("div");
-    card.className = "mb-2.5 rounded-xl border border-review-border bg-review-panel-2 p-2.5";
+    const isSelected = selectedCommentId === comment.id;
+    const staleBadge = staleCommentIds.has(comment.id)
+      ? `<span class="rounded-md border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-bold uppercase text-amber-300">Stale anchor</span>`
+      : "";
+    card.className = [
+      "mb-2.5 rounded-xl border bg-review-panel-2 p-2.5",
+      isSelected ? "border-review-accent shadow-[0_0_0_1px_rgba(88,166,255,0.35)]" : "border-review-border",
+    ].join(" ");
     card.innerHTML = `
       <div class="mb-2 flex items-center justify-between gap-2">
-        <div class="text-[11px] font-extrabold uppercase text-review-accent">${escapeHtml(comment.kind)}</div>
+        <div class="flex items-center gap-2 text-[11px] font-extrabold uppercase text-review-accent">
+          <span>${escapeHtml(commentKindLabel(comment.kind))}</span>
+          ${staleBadge}
+        </div>
         <div class="flex gap-1.5">
           <button data-action="jump" class="rounded-md border border-review-border bg-review-panel-2 px-2 py-1 text-[11px] text-review-text hover:border-review-accent/60">Jump</button>
           <button data-action="edit" class="rounded-md border border-review-border bg-review-panel-2 px-2 py-1 text-[11px] text-review-text hover:border-review-accent/60">Edit</button>
@@ -288,9 +484,22 @@ function renderComments(): void {
       <div class="my-2 max-h-[82px] overflow-hidden whitespace-pre-wrap border-l-2 border-review-border pl-2 text-[11px] text-review-muted">${escapeHtml(shortText(comment.selectedText, 500))}</div>
       <div class="whitespace-pre-wrap text-[13px] leading-5 text-review-text">${escapeHtml(comment.comment)}</div>
     `;
-    card.querySelector<HTMLButtonElement>("[data-action='jump']")?.addEventListener("click", () => jumpToComment(comment));
-    card.querySelector<HTMLButtonElement>("[data-action='edit']")?.addEventListener("click", () => editComment(comment));
-    card.querySelector<HTMLButtonElement>("[data-action='delete']")?.addEventListener("click", () => {
+    commentCardById.set(comment.id, card);
+    card.addEventListener("click", () => {
+      selectedCommentId = comment.id;
+      renderActiveResponse();
+      renderComments();
+    });
+    card.querySelector<HTMLButtonElement>("[data-action='jump']")?.addEventListener("click", (event) => {
+      event.stopPropagation();
+      jumpToComment(comment);
+    });
+    card.querySelector<HTMLButtonElement>("[data-action='edit']")?.addEventListener("click", (event) => {
+      event.stopPropagation();
+      editComment(comment);
+    });
+    card.querySelector<HTMLButtonElement>("[data-action='delete']")?.addEventListener("click", (event) => {
+      event.stopPropagation();
       const index = comments.findIndex((item) => item.id === comment.id);
       if (index >= 0) comments.splice(index, 1);
       renderAll();
@@ -350,7 +559,7 @@ function openCommentModal(selection: PendingSelection): void {
   pendingSelection = selection;
   editingCommentId = null;
   modalSelectionEl.textContent = selection.text;
-  modalKindEl.value = "feedback";
+  populateKindSelect(modalKindEl, DEFAULT_RESPONSE_REVIEW_COMMENT_KIND);
   modalCommentEl.value = "";
   modalSaveButton.textContent = "Add comment";
   modalEl.classList.add("open");
@@ -365,7 +574,7 @@ function editComment(comment: ResponseReviewComment): void {
   };
   editingCommentId = comment.id;
   modalSelectionEl.textContent = comment.selectedText;
-  modalKindEl.value = comment.kind;
+  populateKindSelect(modalKindEl, comment.kind);
   modalCommentEl.value = comment.comment;
   modalSaveButton.textContent = "Save comment";
   modalEl.classList.add("open");
@@ -394,7 +603,7 @@ function saveModalComment(): void {
       existing.comment = commentText;
     }
   } else {
-    comments.push({
+    const comment: ResponseReviewComment = {
       id: `comment-${Date.now()}-${Math.random().toString(16).slice(2)}`,
       responseId: activeResponseId,
       kind: modalKindEl.value as ResponseReviewCommentKind,
@@ -402,7 +611,9 @@ function saveModalComment(): void {
       comment: commentText,
       ...(selection.startOffset !== undefined ? { startOffset: selection.startOffset } : {}),
       ...(selection.endOffset !== undefined ? { endOffset: selection.endOffset } : {}),
-    });
+    };
+    comments.push(comment);
+    selectedCommentId = comment.id;
   }
 
   closeModal();
@@ -412,8 +623,19 @@ function saveModalComment(): void {
 
 function jumpToComment(comment: ResponseReviewComment): void {
   activeResponseId = comment.responseId;
+  selectedCommentId = comment.id;
   renderAll();
   window.setTimeout(() => {
+    const anchor = responseContentEl.querySelector<HTMLElement>(
+      `[data-comment-id="${CSS.escape(comment.id)}"]`,
+    );
+    if (anchor) {
+      anchor.scrollIntoView({ behavior: "smooth", block: "center" });
+      anchor.classList.add("search-match");
+      window.setTimeout(() => anchor.classList.remove("search-match"), 1800);
+      return;
+    }
+
     const exact = findTextElement(responseContentEl, comment.selectedText);
     if (exact) {
       exact.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -456,6 +678,7 @@ function submit(): void {
     requestId: `submit-${Date.now()}`,
     activeResponseId,
     overallComment: overallCommentEl.value,
+    overallCommentKind: overallKindEl.value as ResponseReviewCommentKind,
     draft: draftEl.value,
     comments: [...comments],
   });
@@ -472,6 +695,9 @@ window.__responseReviewReceive = (message: ResponseReviewHostMessage): void => {
     `Submitted ${message.commentCount} comment${message.commentCount === 1 ? "" : "s"}${message.hasOverallComment ? " with overall feedback" : ""}.`,
   );
 };
+
+populateKindSelect(overallKindEl, DEFAULT_RESPONSE_REVIEW_COMMENT_KIND);
+populateKindSelect(modalKindEl, DEFAULT_RESPONSE_REVIEW_COMMENT_KIND);
 
 responseSearchEl.addEventListener("input", () => {
   responseFilter = responseSearchEl.value;

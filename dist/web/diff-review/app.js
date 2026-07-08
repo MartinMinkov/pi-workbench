@@ -124,28 +124,54 @@
     return supportsSemanticDefinition(languageId) ? "open definition" : "open module/import target";
   }
 
+  // src/shared/contracts/review-comment-kinds.ts
+  var DIFF_REVIEW_COMMENT_KINDS = [
+    {
+      value: "question",
+      label: "Question",
+      promptLabel: "Question",
+      description: "Ask for clarification; do not change code unless explicitly requested."
+    },
+    {
+      value: "feedback",
+      label: "Feedback",
+      promptLabel: "Feedback",
+      description: "Request a valid code or behavior change."
+    },
+    {
+      value: "risk",
+      label: "Risk",
+      promptLabel: "Risk",
+      description: "Investigate a possible correctness, security, or performance risk."
+    },
+    {
+      value: "explain",
+      label: "Explain",
+      promptLabel: "Explain",
+      description: "Explain the relevant behavior, tradeoff, or design."
+    },
+    {
+      value: "tests",
+      label: "Tests",
+      promptLabel: "Tests",
+      description: "Add or update verification when appropriate."
+    }
+  ];
+  var DEFAULT_DIFF_REVIEW_COMMENT_KIND = "question";
+  function getReviewCommentKindLabel(definitions, kind, fallback) {
+    return (definitions.find((definition) => definition.value === (kind ?? fallback)) ?? definitions.find((definition) => definition.value === fallback) ?? definitions[0]).label;
+  }
   // src/features/diff-review/web/app/shared/review-helpers.ts
   function getCommentKind(comment) {
-    return comment.kind ?? "feedback";
+    return comment.kind ?? DEFAULT_DIFF_REVIEW_COMMENT_KIND;
   }
   function getCommentKindLabel(kind) {
-    switch (kind) {
-      case "question":
-        return "Question";
-      case "risk":
-        return "Risk";
-      case "explain":
-        return "Explain";
-      case "tests":
-        return "Tests";
-      default:
-        return "Feedback";
-    }
+    return getReviewCommentKindLabel(DIFF_REVIEW_COMMENT_KINDS, kind, DEFAULT_DIFF_REVIEW_COMMENT_KIND);
   }
   function createComment(partial) {
     return {
       id: `${Date.now()}:${Math.random().toString(16).slice(2)}`,
-      kind: partial.kind ?? "feedback",
+      kind: partial.kind ?? DEFAULT_DIFF_REVIEW_COMMENT_KIND,
       ...partial
     };
   }
@@ -446,18 +472,10 @@
 
   // src/features/diff-review/web/features/comments/modals.ts
   function getCommentKindLabel2(kind) {
-    switch (kind) {
-      case "question":
-        return "Question";
-      case "risk":
-        return "Risk";
-      case "explain":
-        return "Explain";
-      case "tests":
-        return "Tests";
-      default:
-        return "Feedback";
-    }
+    return getReviewCommentKindLabel(DIFF_REVIEW_COMMENT_KINDS, kind, DEFAULT_DIFF_REVIEW_COMMENT_KIND);
+  }
+  function renderCommentKindOptions() {
+    return DIFF_REVIEW_COMMENT_KINDS.map((definition) => `<option value="${escapeHtml(definition.value)}" title="${escapeHtml(definition.description)}">${escapeHtml(definition.label)}</option>`).join("");
   }
   function insertAtCursor(textarea, value) {
     const before = textarea.value.slice(0, textarea.selectionStart ?? textarea.value.length);
@@ -487,11 +505,7 @@
       <div class="mb-4 text-sm text-review-muted">${escapeHtml(options.description)}</div>
       <div class="mb-3">
         <select id="review-text-kind" class="rounded-md border border-review-border bg-[#010409] px-2 py-1.5 text-xs font-medium text-review-text outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500">
-          <option value="feedback">Feedback</option>
-          <option value="question">Question</option>
-          <option value="risk">Risk</option>
-          <option value="explain">Explain</option>
-          <option value="tests">Tests</option>
+          ${renderCommentKindOptions()}
         </select>
       </div>
       <textarea id="review-modal-text" rows="12" class="scrollbar-thin min-h-[240px] w-full resize-y overflow-auto rounded-md border border-review-border bg-[#010409] px-3 py-2 text-sm text-review-text outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500">${escapeHtml(options.initialValue ?? "")}</textarea>
@@ -514,13 +528,13 @@
       setupPasteHandler(textarea);
     }
     if (kindSelect) {
-      kindSelect.value = options.initialKind ?? "feedback";
+      kindSelect.value = options.initialKind ?? DEFAULT_DIFF_REVIEW_COMMENT_KIND;
     }
     if (saveButton && textarea) {
       saveButton.addEventListener("click", () => {
         options.onSave({
           body: textarea.value.trim(),
-          kind: kindSelect?.value ?? "feedback"
+          kind: kindSelect?.value ?? DEFAULT_DIFF_REVIEW_COMMENT_KIND
         });
         close();
       });
@@ -543,11 +557,7 @@
       <div class="mb-4 text-sm text-review-muted">${escapeHtml(options.description)}</div>
       <div class="mb-3">
         <select id="review-comment-kind" class="rounded-md border border-review-border bg-[#010409] px-2 py-1.5 text-xs font-medium text-review-text outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500">
-          <option value="feedback">Feedback</option>
-          <option value="question">Question</option>
-          <option value="risk">Risk</option>
-          <option value="explain">Explain</option>
-          <option value="tests">Tests</option>
+          ${renderCommentKindOptions()}
         </select>
       </div>
       <textarea id="review-comment-body" rows="10" class="scrollbar-thin min-h-[220px] w-full resize-y overflow-auto rounded-md border border-review-border bg-[#010409] px-3 py-2 text-sm text-review-text outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500">${escapeHtml(options.initialBody ?? "")}</textarea>
@@ -576,7 +586,7 @@
         return;
       options.onSave({
         body,
-        kind: kindSelect?.value ?? "feedback"
+        kind: kindSelect?.value ?? DEFAULT_DIFF_REVIEW_COMMENT_KIND
       });
       close();
     });
@@ -705,11 +715,7 @@
           <div class="truncate text-xs font-semibold text-review-text">${escapeHtml(title)}</div>
           <div class="mt-2">
             <select data-comment-kind class="rounded-md border border-review-border bg-[#010409] px-2 py-1 text-xs font-medium text-review-text outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500">
-              <option value="feedback">Feedback</option>
-              <option value="question">Question</option>
-              <option value="risk">Risk</option>
-              <option value="explain">Explain</option>
-              <option value="tests">Tests</option>
+              ${renderCommentKindOptions()}
             </select>
           </div>
         </div>
@@ -729,7 +735,7 @@
       }
       textarea.value = comment.body || "";
       if (kindSelect) {
-        kindSelect.value = comment.kind ?? "feedback";
+        kindSelect.value = comment.kind ?? DEFAULT_DIFF_REVIEW_COMMENT_KIND;
         kindSelect.addEventListener("change", () => {
           comment.kind = kindSelect.value;
         });
@@ -763,7 +769,7 @@
     const preview = comment.body.trim().split(`
 `)[0] || "Comment";
     const toggleLabel = comment.collapsed ? "Expand comment" : "Collapse comment";
-    const kind = comment.kind ?? "feedback";
+    const kind = comment.kind ?? DEFAULT_DIFF_REVIEW_COMMENT_KIND;
     container.innerHTML = `
     <div class="rounded-md border border-review-border bg-review-panel">
       <div class="flex items-center gap-2 px-3 py-2">
@@ -1582,7 +1588,7 @@ ${snippet}`;
       currentScope: reviewData.files.some((file) => file.inGitDiff) ? "git-diff" : reviewData.files.some((file) => file.inLastCommit) ? "last-commit" : "all-files",
       comments: [],
       overallComment: "",
-      overallCommentKind: "feedback",
+      overallCommentKind: DEFAULT_DIFF_REVIEW_COMMENT_KIND,
       hideUnchanged: false,
       wrapLines: true,
       collapsedDirs: {},
@@ -3694,7 +3700,7 @@ Target: \`${describeNavigationTarget(target)}\`
       title: `File comment for ${getScopeDisplayPath(file, state.currentScope)}`,
       description: `This comment applies to the whole file in ${scopeLabel(state.currentScope).toLowerCase()}.`,
       initialValue: "",
-      initialKind: "feedback",
+      initialKind: DEFAULT_DIFF_REVIEW_COMMENT_KIND,
       saveLabel: "Add comment",
       onSave: ({ body, kind }) => {
         if (!body)
