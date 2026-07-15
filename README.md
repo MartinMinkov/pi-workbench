@@ -35,7 +35,7 @@ Latest diff-review features include:
 - Review scopes for `git diff`, `last commit`, and `all files`.
 - Lazy file loading and cached file contents per scope.
 - Status-aware sidebar for modified, added, deleted, renamed, and untracked
-  files.
+  files, with GitHub-style added and deleted line totals for each diff scope.
 - Sidebar filters for status, reviewed files, commented files, and changed
   files.
 - Repository-wide code search from the sidebar, with inline match previews.

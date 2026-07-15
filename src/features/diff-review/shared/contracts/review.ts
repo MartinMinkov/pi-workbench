@@ -11,6 +11,11 @@ export type ReviewScope = "git-diff" | "last-commit" | "all-files";
 
 export type ChangeStatus = "modified" | "added" | "deleted" | "renamed";
 
+export interface ReviewLineStats {
+  additions: number;
+  deletions: number;
+}
+
 export interface ReviewFileComparison {
   status: ChangeStatus;
   oldPath: string | null;
@@ -18,6 +23,7 @@ export interface ReviewFileComparison {
   displayPath: string;
   hasOriginal: boolean;
   hasModified: boolean;
+  lineStats: ReviewLineStats | null;
 }
 
 export interface ReviewFile {

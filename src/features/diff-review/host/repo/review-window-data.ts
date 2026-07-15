@@ -7,13 +7,21 @@ import type {
   ReviewFileComparison,
   ReviewFileContents,
   ReviewGoModule,
+  ReviewLineStats,
   ReviewScope,
 } from "../../shared/contracts/review.js";
+import {
+  countContentLines,
+  findGitLineStats,
+  parseGitNumstat,
+  type GitNumstatEntry,
+} from "../../shared/lib/diff-line-stats.js";
 
 interface ChangedPath {
   status: ChangeStatus;
   oldPath: string | null;
   newPath: string | null;
+  lineStats: ReviewLineStats | null;
 }
 
 interface ReviewFileSeed {
@@ -91,7 +99,7 @@ function parseNameStatus(output: string): ChangedPath[] {
       const oldPath = parts[1] ?? null;
       const newPath = parts[2] ?? null;
       if (oldPath != null && newPath != null) {
-        changes.push({ status: "renamed", oldPath, newPath });
+        changes.push({ status: "renamed", oldPath, newPath, lineStats: null });
       }
       continue;
     }
@@ -99,7 +107,12 @@ function parseNameStatus(output: string): ChangedPath[] {
     if (code === "M") {
       const path = parts[1] ?? null;
       if (path != null) {
-        changes.push({ status: "modified", oldPath: path, newPath: path });
+        changes.push({
+          status: "modified",
+          oldPath: path,
+          newPath: path,
+          lineStats: null,
+        });
       }
       continue;
     }
@@ -107,7 +120,12 @@ function parseNameStatus(output: string): ChangedPath[] {
     if (code === "A") {
       const path = parts[1] ?? null;
       if (path != null) {
-        changes.push({ status: "added", oldPath: null, newPath: path });
+        changes.push({
+          status: "added",
+          oldPath: null,
+          newPath: path,
+          lineStats: null,
+        });
       }
       continue;
     }
@@ -115,7 +133,12 @@ function parseNameStatus(output: string): ChangedPath[] {
     if (code === "D") {
       const path = parts[1] ?? null;
       if (path != null) {
-        changes.push({ status: "deleted", oldPath: path, newPath: null });
+        changes.push({
+          status: "deleted",
+          oldPath: path,
+          newPath: null,
+          lineStats: null,
+        });
       }
     }
   }
@@ -132,6 +155,7 @@ function parseUntrackedPaths(output: string): ChangedPath[] {
       status: "added" as const,
       oldPath: null,
       newPath: path,
+      lineStats: null,
     }));
 }
 
@@ -225,6 +249,7 @@ function toComparison(change: ChangedPath): ReviewFileComparison {
     displayPath: toDisplayPath(change),
     hasOriginal: change.oldPath != null,
     hasModified: change.newPath != null,
+    lineStats: change.lineStats,
   };
 }
 
@@ -344,6 +369,44 @@ function compareReviewFiles(a: ReviewFile, b: ReviewFile): number {
   return a.path.localeCompare(b.path);
 }
 
+function attachGitLineStats(
+  changes: ChangedPath[],
+  entries: GitNumstatEntry[],
+): ChangedPath[] {
+  return changes.map((change) => ({
+    ...change,
+    lineStats: findGitLineStats(
+      entries,
+      change.status,
+      change.oldPath,
+      change.newPath,
+    ),
+  }));
+}
+
+async function attachUntrackedLineStats(
+  repoRoot: string,
+  changes: ChangedPath[],
+): Promise<ChangedPath[]> {
+  return Promise.all(
+    changes.map(async (change) => {
+      if (change.newPath == null) return change;
+      try {
+        const content = await readFile(join(repoRoot, change.newPath), "utf8");
+        return {
+          ...change,
+          lineStats: {
+            additions: countContentLines(content),
+            deletions: 0,
+          },
+        };
+      } catch {
+        return change;
+      }
+    }),
+  );
+}
+
 function upsertSeed(
   seeds: Map<string, ReviewFileSeed>,
   key: string,
@@ -377,6 +440,17 @@ export async function getReviewWindowData(
         "--",
       ])
     : "";
+  const trackedDiffNumstatOutput = repositoryHasHead
+    ? await runGit(pi, repoRoot, [
+        "diff",
+        "--find-renames",
+        "-M",
+        "--numstat",
+        "-z",
+        "HEAD",
+        "--",
+      ])
+    : "";
   const untrackedOutput = await runGitAllowFailure(pi, repoRoot, [
     "ls-files",
     "--others",
@@ -403,9 +477,30 @@ export async function getReviewWindowData(
       ])
     : "";
 
-  const worktreeChanges = mergeChangedPaths(
+  const lastCommitNumstatOutput = repositoryHasHead
+    ? await runGitAllowFailure(pi, repoRoot, [
+        "diff-tree",
+        "--root",
+        "--find-renames",
+        "-M",
+        "--numstat",
+        "-z",
+        "--no-commit-id",
+        "-r",
+        "HEAD",
+      ])
+    : "";
+  const trackedWorktreeChanges = attachGitLineStats(
     parseNameStatus(trackedDiffOutput),
+    parseGitNumstat(trackedDiffNumstatOutput),
+  );
+  const untrackedChanges = await attachUntrackedLineStats(
+    repoRoot,
     parseUntrackedPaths(untrackedOutput),
+  );
+  const worktreeChanges = mergeChangedPaths(
+    trackedWorktreeChanges,
+    untrackedChanges,
   ).filter((change) =>
     isReviewableFilePath(change.newPath ?? change.oldPath ?? ""),
   );
@@ -416,7 +511,10 @@ export async function getReviewWindowData(
   ])
     .filter((path) => !deletedPaths.has(path))
     .filter(isReviewableFilePath);
-  const lastCommitChanges = parseNameStatus(lastCommitOutput).filter((change) =>
+  const lastCommitChanges = attachGitLineStats(
+    parseNameStatus(lastCommitOutput),
+    parseGitNumstat(lastCommitNumstatOutput),
+  ).filter((change) =>
     isReviewableFilePath(change.newPath ?? change.oldPath ?? ""),
   );
 

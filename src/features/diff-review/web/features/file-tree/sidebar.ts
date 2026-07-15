@@ -2,6 +2,7 @@ import {
   buildTree,
   escapeHtml,
 } from "../../shared/lib/utils.js";
+import { sumLineStats } from "../../../shared/lib/diff-line-stats.js";
 import type {
   ChangeStatus,
   ReviewFile,
@@ -342,7 +343,21 @@ export function createSidebarController(
     const filteredSuffix = state.fileFilter.trim()
       ? ` • ${codeSearch.results.length} code match(es)`
       : "";
-    summaryEl.textContent = `${scopedFiles.length} file(s) • ${comments} comment(s)${state.overallComment ? " • overall note" : ""}${filteredSuffix}`;
+    const fileLabel = `${scopedFiles.length} ${scopedFiles.length === 1 ? "file" : "files"}${state.currentScope === "all-files" ? "" : " changed"}`;
+    const lineStats =
+      state.currentScope === "all-files"
+        ? null
+        : sumLineStats(
+            scopedFiles.map((file) =>
+              state.currentScope === "git-diff"
+                ? file.gitDiff?.lineStats ?? null
+                : file.lastCommit?.lineStats ?? null,
+            ),
+          );
+    const lineStatsHtml = lineStats
+      ? ` • <span class="font-medium text-[#3fb950]">+${lineStats.additions}</span> <span class="font-medium text-[#f85149]">−${lineStats.deletions}</span>`
+      : "";
+    summaryEl.innerHTML = `${fileLabel}${lineStatsHtml} • ${comments} ${comments === 1 ? "comment" : "comments"}${state.overallComment ? " • overall note" : ""}${filteredSuffix}`;
     updateToggleButtons();
     updateSidebarLayout();
   }
